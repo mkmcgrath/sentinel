@@ -43,5 +43,35 @@ class CPUCollector:
                 idle_delta = idle_time - self.prev_idle
                 total_delta = total_time - self.prev_total
 
+                # store for next calculation
+                self.prev_idle = idle_time
+                self.prev_total = total_time
+
+                # calculate usage percentage
+                if total_delta == 0:
+                    return 0.0
+
+                usage = 100.0 * (1.0 - idle_delta / total_delta)
+                return max(0.0, min(100.0, usage)) 
+        
+        except (IOError, ValueError, IndexError) as e:
+            print(f"error reading cpu stats: {e}")
+            return 0.0 
+    
+    def _get_load_average(self):
+        # read load averages from /proc/loadavg
+        try: 
+            with open('/proc/loadavg', 'r') as f:
+                line = f.readline()
+                fields = line.split()
+                return (
+                    float(fields[0]), # 1 min
+                    float(fields[1]), # 5 min
+                    float(fields[2]) # 15 min
+                )
+        except (IOError, ValueError, IndexError) as e:
+            print(f"Error reading load average: {e}")
+            return (0.0, 0.0, 0.0)
+
 
 
