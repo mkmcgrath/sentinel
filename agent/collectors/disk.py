@@ -1,4 +1,4 @@
-""" Disk metric collector, uses os.statvfs() and /prog/diskstats"""
+""" disk metric collector, uses os.statvfs() and /prog/diskstats"""
 import os
 
 
@@ -7,7 +7,7 @@ class DiskCollector:
         self.prev_stats = {}
 
     def collect(self):
-        """Collect disk metrics"""
+        """collect disk metrics"""
         partitions = self._get_disk_usage()
         io_stats = self._get_disk_io()
 
@@ -17,7 +17,7 @@ class DiskCollector:
         }
 
     def _get_disk_usage(self):
-        """Get disk usage for all mounted partitions"""
+        """get disk usage for all mounted partitions"""
         partitions = []
 
         try:
@@ -67,7 +67,7 @@ class DiskCollector:
         return partitions
 
     def _get_disk_io(self):
-        """Read disk I/O statistics from /proc/diskstats"""
+        """read disk I/O statistics from /proc/diskstats"""
         io_stats = {}
 
         try:
