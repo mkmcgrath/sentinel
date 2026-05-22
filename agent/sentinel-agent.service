@@ -1,0 +1,14 @@
+[Unit]
+Description=Sentinel Monitoring Agent
+After=network.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/opt/sentinel-agent
+ExecStart=/usr/bin/python3 /opt/sentinel-agent/agent.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

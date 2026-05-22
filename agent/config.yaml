@@ -1,0 +1,20 @@
+# Sentinel Agent Configuration
+# This file allows per-node customization while keeping the code generic
+
+node_id: hq
+hostname: hq.local
+server_url: http://localhost:8080
+api_version: v1
+report_interval: 10
+log_level: INFO
+
+# Services to monitor via systemctl
+services:
+  - sshd
+  - docker
+
+# Ports to check for connectivity
+ports:
+  - 22
+  - 8080
+  - 5432

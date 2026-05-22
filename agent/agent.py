@@ -7,6 +7,8 @@ import sys
 import time
 import json
 import logging
+import socket
+from pathlib import Path
 from datetime import datetime, timezone
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
@@ -30,6 +32,7 @@ class SentinelAgent:
         self._setup_logging()
 
         # initialize collectors
+        # These modules use /proc and stdlib to keep the agent lightweight (Phase 3.2)
         self.cpu_collector = CPUCollector()
         self.memory_collector = MemoryCollector()
         self.disk_collector = DiskCollector()
@@ -107,6 +110,7 @@ class SentinelAgent:
     def collect_metrics(self):
         """collect all metrics from all collectors"""
         try:
+            # Aggregate data from specialized collectors (Phase 3.3)
             metrics = {
                 "cpu": self.cpu_collector.collect(),
                 "memory": self.memory_collector.collect(),
@@ -132,6 +136,7 @@ class SentinelAgent:
                 headers={'Content-Type': 'application/json'}
             )
 
+            # Use stdlib urllib to avoid external dependencies like 'requests'
             with urlopen(req, timeout=10) as response:
                 if response.status == 200:
                     self.logger.debug(f"Metrics sent successfully to {url}")
@@ -152,4 +157,35 @@ class SentinelAgent:
 
     def run(self):
         """main agent loop"""
-        self.logger.info("Starting Sentinel Agent...")
+        self.logger.info(f"Starting Sentinel Agent loop (interval: {self.config['report_interval']}s)...")
+        
+        while True:
+            try:
+                # 1. Collect
+                metrics = self.collect_metrics()
+                
+                if metrics:
+                    # 2. Prepare Payload (Phase 3.3)
+                    payload = {
+                        "node_id": self.node_id,
+                        "hostname": self.hostname,
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "metrics": metrics
+                    }
+                    
+                    # 3. report
+                    self.send_metrics(payload)
+                
+                # 4. Wait
+                time.sleep(self.config['report_interval'])
+                
+            except KeyboardInterrupt:
+                self.logger.info("Agent stopping...")
+                break
+            except Exception as e:
+                self.logger.error(f"Unexpected error in main loop: {e}")
+                time.sleep(self.config['retry_delay'])
+
+if __name__ == "__main__":
+    agent = SentinelAgent()
+    agent.run()
