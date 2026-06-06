@@ -1,20 +1,35 @@
 # Sentinel Agent Configuration
-# This file allows per-node customization while keeping the code generic
 
-node_id: hq
-hostname: hq.local
-server_url: http://localhost:8080
-api_version: v1
+# Unique identifier for this node
+node_id: "node-01"
+
+# Hostname (will be auto-detected if not specified)
+hostname: ""
+
+# Central server URL
+server_url: "http://192.168.1.10:8080"
+
+# API version
+api_version: "v1"
+
+# Reporting interval in seconds
 report_interval: 10
-log_level: INFO
 
-# Services to monitor via systemctl
+# Services to monitor (systemd service names)
 services:
   - sshd
   - docker
 
-# Ports to check for connectivity
+# Ports to check if listening
 ports:
   - 22
-  - 8080
-  - 5432
+  - 80
+  - 443
+
+# Retry settings
+max_retries: 3
+retry_delay: 5
+
+# Logging
+log_level: "INFO"
+log_file: "/var/log/sentinel-agent.log"

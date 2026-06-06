@@ -1,9 +1,9 @@
-"""memory metric collector - reads /proc/meminfo"""
+"""Memory metric collector - reads /proc/meminfo"""
 
 
 class MemoryCollector:
     def collect(self):
-        """collect memory metrics"""
+        """Collect memory metrics"""
         mem_info = self._get_memory_info()
 
         return {
@@ -16,7 +16,7 @@ class MemoryCollector:
         }
 
     def _get_memory_info(self):
-        """read memory information from /proc/meminfo"""
+        """Read memory information from /proc/meminfo"""
         try:
             meminfo = {}
             with open('/proc/meminfo', 'r') as f:
@@ -24,24 +24,24 @@ class MemoryCollector:
                     parts = line.split(':')
                     if len(parts) == 2:
                         key = parts[0].strip()
-                        # remove kB and convert to int
+                        # Remove 'kB' and convert to int
                         value = int(parts[1].strip().split()[0])
                         meminfo[key] = value
 
-            # convert from KB to MB
+            # Convert from KB to MB
             total = meminfo.get('MemTotal', 0) / 1024
             available = meminfo.get('MemAvailable', 0) / 1024
             free = meminfo.get('MemFree', 0) / 1024
             buffers = meminfo.get('Buffers', 0) / 1024
             cached = meminfo.get('Cached', 0) / 1024
 
-            # calculate used memory
+            # Calculate used memory
             used = total - available
 
-            # calculate percentage
+            # Calculate percentage
             percent = (used / total * 100) if total > 0 else 0
 
-            # swap information
+            # Swap information
             swap_total = meminfo.get('SwapTotal', 0) / 1024
             swap_free = meminfo.get('SwapFree', 0) / 1024
             swap_used = swap_total - swap_free

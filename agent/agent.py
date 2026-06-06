@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Sentinel Agent - lightweight monitoring agent
-collects system metrics and reports to central server
+Sentinel Agent - Lightweight monitoring agent
+Collects system metrics and reports to central server
 """
 import sys
 import time
 import json
-import logging
 import socket
-from pathlib import Path
+import logging
 from datetime import datetime, timezone
+from pathlib import Path
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
 
@@ -31,8 +31,7 @@ class SentinelAgent:
         self.config = self._load_config(config_path)
         self._setup_logging()
 
-        # initialize collectors
-        # These modules use /proc and stdlib to keep the agent lightweight (Phase 3.2)
+        # Initialize collectors
         self.cpu_collector = CPUCollector()
         self.memory_collector = MemoryCollector()
         self.disk_collector = DiskCollector()
@@ -48,10 +47,10 @@ class SentinelAgent:
         self.logger.info(f"Sentinel Agent initialized for node: {self.node_id}")
 
     def _load_config(self, config_path):
-        """load configuration from YAML file"""
+        """Load configuration from YAML file"""
         config_file = Path(config_path)
 
-        # default configuration
+        # Default configuration
         default_config = {
             'node_id': socket.gethostname(),
             'hostname': socket.gethostname(),
@@ -77,7 +76,7 @@ class SentinelAgent:
         try:
             with open(config_file, 'r') as f:
                 config = yaml.safe_load(f)
-                # merge with defaults
+                # Merge with defaults
                 for key, value in default_config.items():
                     if key not in config:
                         config[key] = value
@@ -87,7 +86,7 @@ class SentinelAgent:
             return default_config
 
     def _setup_logging(self):
-        """setup logging configuration"""
+        """Setup logging configuration"""
         log_level = getattr(logging, self.config.get('log_level', 'INFO'))
         log_file = self.config.get('log_file')
 
@@ -108,9 +107,8 @@ class SentinelAgent:
         self.logger = logging.getLogger('SentinelAgent')
 
     def collect_metrics(self):
-        """collect all metrics from all collectors"""
+        """Collect all metrics from all collectors"""
         try:
-            # Aggregate data from specialized collectors (Phase 3.3)
             metrics = {
                 "cpu": self.cpu_collector.collect(),
                 "memory": self.memory_collector.collect(),
@@ -123,8 +121,17 @@ class SentinelAgent:
             self.logger.error(f"Error collecting metrics: {e}")
             return None
 
+    def create_payload(self, metrics):
+        """Create the JSON payload to send to server"""
+        return {
+            "node_id": self.node_id,
+            "hostname": self.hostname,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "metrics": metrics
+        }
+
     def send_metrics(self, payload):
-        """send metrics to the central server"""
+        """Send metrics to the central server"""
         api_version = self.config.get('api_version', 'v1')
         url = f"{self.config['server_url']}/api/{api_version}/metrics"
 
@@ -136,7 +143,6 @@ class SentinelAgent:
                 headers={'Content-Type': 'application/json'}
             )
 
-            # Use stdlib urllib to avoid external dependencies like 'requests'
             with urlopen(req, timeout=10) as response:
                 if response.status == 200:
                     self.logger.debug(f"Metrics sent successfully to {url}")
@@ -156,36 +162,57 @@ class SentinelAgent:
             return False
 
     def run(self):
-        """main agent loop"""
-        self.logger.info(f"Starting Sentinel Agent loop (interval: {self.config['report_interval']}s)...")
-        
+        """Main agent loop"""
+        self.logger.info("Starting Sentinel Agent...")
+
+        # Do an initial collection to prime the CPU collector
+        self.cpu_collector.collect()
+        time.sleep(1)
+
         while True:
             try:
-                # 1. Collect
+                # Collect metrics
                 metrics = self.collect_metrics()
-                
-                if metrics:
-                    # 2. Prepare Payload (Phase 3.3)
-                    payload = {
-                        "node_id": self.node_id,
-                        "hostname": self.hostname,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "metrics": metrics
-                    }
-                    
-                    # 3. report
-                    self.send_metrics(payload)
-                
-                # 4. Wait
+
+                if metrics is None:
+                    self.logger.warning("Failed to collect metrics, skipping this cycle")
+                    time.sleep(self.config['report_interval'])
+                    continue
+
+                # Create payload
+                payload = self.create_payload(metrics)
+
+                # Send to server with retry logic
+                success = False
+                for attempt in range(self.config['max_retries']):
+                    if self.send_metrics(payload):
+                        success = True
+                        break
+                    else:
+                        if attempt < self.config['max_retries'] - 1:
+                            self.logger.info(
+                                f"Retrying in {self.config['retry_delay']} seconds... "
+                                f"(attempt {attempt + 1}/{self.config['max_retries']})"
+                            )
+                            time.sleep(self.config['retry_delay'])
+
+                if not success:
+                    self.logger.error("Failed to send metrics after all retries")
+
+                # Wait for next interval
                 time.sleep(self.config['report_interval'])
-                
+
             except KeyboardInterrupt:
-                self.logger.info("Agent stopping...")
+                self.logger.info("Received shutdown signal, stopping agent...")
                 break
             except Exception as e:
                 self.logger.error(f"Unexpected error in main loop: {e}")
-                time.sleep(self.config['retry_delay'])
+                time.sleep(self.config['report_interval'])
+
 
 if __name__ == "__main__":
-    agent = SentinelAgent()
+    # Allow config path to be specified as command line argument
+    config_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
+
+    agent = SentinelAgent(config_path)
     agent.run()

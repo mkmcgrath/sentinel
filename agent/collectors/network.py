@@ -1,7 +1,7 @@
-"""network metric collector - reads /proc/net/dev and measures latency"""
-
+"""Network metric collector - reads /proc/net/dev and measures latency"""
 import subprocess
 import re
+
 
 class NetworkCollector:
     def __init__(self):
@@ -18,12 +18,12 @@ class NetworkCollector:
         }
 
     def _get_network_stats(self):
-        """read network interface statistics from /proc/net/dev"""
+        """Read network interface statistics from /proc/net/dev"""
         interfaces = {}
 
         try:
             with open('/proc/net/dev', 'r') as f:
-                # skip header lines
+                # Skip header lines
                 f.readline()
                 f.readline()
 
@@ -38,7 +38,7 @@ class NetworkCollector:
                     if len(stats) < 16:
                         continue
 
-                    # skip loopback
+                    # Skip loopback
                     if interface == 'lo':
                         continue
 
@@ -71,19 +71,19 @@ class NetworkCollector:
     def _measure_latency(self):
         """Ping the default gateway to measure network latency"""
         try:
-            # get default gateway
+            # Get default gateway
             with open('/proc/net/route', 'r') as f:
                 for line in f:
                     parts = line.split()
                     if len(parts) >= 3 and parts[1] == '00000000':
-                        # gateway is in hex, convert to IP
+                        # Gateway is in hex, convert to IP
                         gateway_hex = parts[2]
                         gateway_ip = '.'.join([
                             str(int(gateway_hex[i:i+2], 16))
                             for i in range(6, -1, -2)
                         ])
 
-                        # ping the gateway once
+                        # Ping the gateway once
                         result = subprocess.run(
                             ['ping', '-c', '1', '-W', '1', gateway_ip],
                             capture_output=True,
@@ -92,7 +92,7 @@ class NetworkCollector:
                         )
 
                         if result.returncode == 0:
-                            # extract time from ping output
+                            # Extract time from ping output
                             match = re.search(r'time=(\d+\.?\d*)', result.stdout)
                             if match:
                                 return round(float(match.group(1)), 2)
@@ -103,7 +103,3 @@ class NetworkCollector:
             print(f"Error measuring latency: {e}")
 
         return None
-
-
-
-

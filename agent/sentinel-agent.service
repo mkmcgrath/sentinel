@@ -6,9 +6,11 @@ After=network.target
 Type=simple
 User=deploy
 WorkingDirectory=/opt/sentinel-agent
-ExecStart=/usr/bin/python3 /opt/sentinel-agent/agent.py
+ExecStart=/usr/bin/python3 /opt/sentinel-agent/agent.py /opt/sentinel-agent/config.yaml
 Restart=always
 RestartSec=10
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

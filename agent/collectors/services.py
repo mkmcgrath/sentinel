@@ -1,4 +1,4 @@
-"""service status collector - checks systemd services and listening ports"""
+"""Service status collector - checks systemd services and listening ports"""
 import subprocess
 import socket
 
@@ -6,9 +6,9 @@ import socket
 class ServicesCollector:
     def __init__(self, services_to_monitor=None, ports_to_monitor=None):
         """
-        initialize the services collector
+        Initialize the services collector
 
-        args:
+        Args:
             services_to_monitor: List of systemd service names to check
             ports_to_monitor: List of ports to check if they're listening
         """
@@ -16,7 +16,7 @@ class ServicesCollector:
         self.ports_to_monitor = ports_to_monitor or []
 
     def collect(self):
-        """collect service status metrics"""
+        """Collect service status metrics"""
         service_statuses = self._check_services()
         port_statuses = self._check_ports()
 
@@ -26,7 +26,7 @@ class ServicesCollector:
         }
 
     def _check_services(self):
-        """check status of configured systemd services"""
+        """Check status of configured systemd services"""
         statuses = []
 
         for service in self.services_to_monitor:
@@ -46,7 +46,7 @@ class ServicesCollector:
                 })
 
             except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-                print(f"error checking service {service}: {e}")
+                print(f"Error checking service {service}: {e}")
                 statuses.append({
                     "name": service,
                     "status": "unknown",
@@ -56,7 +56,7 @@ class ServicesCollector:
         return statuses
 
     def _check_ports(self):
-        """check if configured ports are listening"""
+        """Check if configured ports are listening"""
         statuses = []
 
         for port in self.ports_to_monitor:
@@ -70,12 +70,12 @@ class ServicesCollector:
         return statuses
 
     def _is_port_listening(self, port):
-        """check if a port is listening on localhost"""
+        """Check if a port is listening on localhost"""
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.settimeout(1)
                 result = sock.connect_ex(('127.0.0.1', port))
                 return result == 0
         except (socket.error, OSError) as e:
-            print(f"error checking port {port}: {e}")
+            print(f"Error checking port {port}: {e}")
             return False
