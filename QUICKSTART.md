@@ -86,7 +86,7 @@ sudo ./install.sh
 
 ## Step 3: View the Dashboard (2 minutes)
 
-On your workstation or main host:
+### Option A — Terminal (TUI)
 
 ```bash
 cd sentinel/tui
@@ -107,6 +107,21 @@ You should see:
 - `q` - Quit
 - `r` - Manual refresh
 - `d` - Toggle dark mode
+
+### Option B — Web Dashboard
+
+```bash
+cd sentinel/web
+
+# First time only
+npm install
+cp .env.example .env.local
+# Edit .env.local: set VITE_API_URL=http://192.168.1.10:8080
+
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser. The node grid auto-refreshes every 5 seconds.
 
 ## Step 4: Test the System
 

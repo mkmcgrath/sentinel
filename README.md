@@ -15,7 +15,8 @@
 - **Lightweight Agent**: Python agent with zero external dependencies (uses only stdlib)
 - **Central Server**: FastAPI-based server with PostgreSQL storage
 - **TUI Dashboard**: Beautiful terminal dashboard using Textual
-- **Alert System**: Configurable alerts with threshold monitoring
+- **Web Dashboard**: React-based browser UI with live node grid and alert status
+- **Alert System**: Configurable threshold alerts with automatic resolution
 - **RESTful API**: Complete API for custom integrations
 - **Docker Support**: Easy deployment with docker-compose
 
@@ -119,7 +120,14 @@ sentinel/
 ├── tui/                 # Terminal dashboard
 │   ├── dashboard.py     # Textual-based TUI
 │   └── requirements.txt
-├── web/                 # Web dashboard (future)
+├── web/                 # React web dashboard
+│   ├── src/
+│   │   ├── api.js       # Centralized API service layer
+│   │   ├── App.jsx      # Router shell + nav
+│   │   ├── components/  # NavBar, NodeCard, AlertsBanner
+│   │   └── pages/       # HomePage, NodeDetailPage (stub), AlertsPage (stub)
+│   ├── .env.example
+│   └── package.json
 └── docker-compose.yml   # Server deployment
 ```
 
@@ -278,12 +286,40 @@ See LICENSE file for details.
 
 This is a personal homelab project, but suggestions and improvements are welcome!
 
+## Web Dashboard
+
+The React web dashboard (`web/`) provides a browser-based view of the cluster.
+
+### Running locally
+
+```bash
+cd web
+cp .env.example .env.local
+# Edit .env.local and set VITE_API_URL to your server address
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser.
+
+**What's built:**
+- Node grid home page — color-coded status cards with live CPU/MEM/DISK bars, auto-refreshes every 5 seconds
+- Active alerts banner
+- Persistent nav bar
+- Routing skeleton for Node Detail and Alert Management pages
+
+**Still to come:**
+- Node Detail page — historical line charts (recharts) with 1h/6h/24h toggle
+- Alert Management page — create/toggle/delete rules, event history table
+
 ## Roadmap
 
-- [ ] Web dashboard with historical graphs
-- [ ] Alert notifications (email, webhook)
+- [x] Web dashboard — node grid home page
+- [ ] Web dashboard — node detail with historical charts
+- [ ] Web dashboard — alert management page
+- [ ] Alert notifications (webhook)
+- [ ] Docker container monitoring
 - [ ] Agent auto-discovery
 - [ ] Metric aggregation and retention policies
-- [ ] Docker container monitoring
 - [ ] SSL/TLS support
 - [ ] Multi-user authentication

@@ -60,3 +60,9 @@ Thumbs.db
 /agent/__pycache__/
 /tui/__pycache__/
 *.pyc
+
+# Web dashboard (Node/Vite)
+web/node_modules/
+web/dist/
+web/.env.local
+web/.env.*.local
