@@ -63,7 +63,7 @@ docker-compose logs -f server
 
 The server will be available at `http://localhost:8080`
 
-### 2. Install Agent on Nodes
+### 2. Install Agent on Nodes.
 
 On each machine you want to monitor:
 
