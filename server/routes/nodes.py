@@ -165,7 +165,7 @@ async def get_node_stats(node_id: str, db: Session = Depends(get_db)):
 
     # Get count per metric type
     metric_counts = {}
-    for metric_type in ['cpu', 'memory', 'disk', 'network', 'services']:
+    for metric_type in ['cpu', 'memory', 'disk', 'network', 'services', 'containers']:
         count = db.query(func.count(Metric.id)).filter(
             Metric.node_id == node_id,
             Metric.metric_type == metric_type

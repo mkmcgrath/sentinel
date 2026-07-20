@@ -2,6 +2,7 @@
 Sentinel Server - Central monitoring server
 FastAPI application for receiving and serving metrics
 """
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -11,6 +12,8 @@ import uvicorn
 
 from db import init_db, engine
 from routes import metrics, nodes, alerts
+
+DEMO_MODE = os.environ.get("DEMO_MODE", "false").lower() == "true"
 
 
 @asynccontextmanager
@@ -26,9 +29,17 @@ async def lifespan(app: FastAPI):
     init_db()
     print("Database initialized")
 
+    demo_task = None
+    if DEMO_MODE:
+        from demo import run_demo_loop
+        print("Demo mode enabled - generating synthetic node data")
+        demo_task = asyncio.create_task(run_demo_loop())
+
     yield
 
     # Shutdown
+    if demo_task:
+        demo_task.cancel()
     print("Shutting down Sentinel Server...")
     engine.dispose()
 

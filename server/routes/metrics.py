@@ -2,8 +2,14 @@
 API routes for receiving and retrieving metrics
 """
 
+import json
+import logging
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
+from urllib.error import URLError, HTTPError
+from urllib.request import Request, urlopen
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -12,6 +18,9 @@ from sqlalchemy import desc, or_
 from db import get_db, Node, Metric, Alert, AlertEvent
 
 router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
+logger = logging.getLogger(__name__)
+
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
 
 
 def _get_metric_value(metrics: dict, metric_path: str) -> Optional[float]:
@@ -58,6 +67,37 @@ def _evaluate_condition(value: float, operator: str, threshold: float) -> bool:
     return fn(value, threshold) if fn else False
 
 
+def _send_webhook_notification(alert: Alert, node_id: str, value: float, timestamp: datetime):
+    """
+    Notify the configured webhook URL that an alert has fired.
+    Best-effort: failures are logged, never raised, so they can't break metric ingestion.
+    """
+    if not WEBHOOK_URL:
+        return
+
+    payload = {
+        "alert_name": alert.name,
+        "node_id": node_id,
+        "metric": alert.metric,
+        "value": value,
+        "threshold": alert.threshold,
+        "operator": alert.operator,
+        "timestamp": timestamp.isoformat(),
+    }
+
+    try:
+        data = json.dumps(payload).encode("utf-8")
+        req = Request(
+            WEBHOOK_URL,
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        with urlopen(req, timeout=5):
+            pass
+    except (URLError, HTTPError) as e:
+        logger.warning(f"Failed to deliver webhook notification: {e}")
+
+
 def _evaluate_alerts(db: Session, node_id: str, metrics: dict, timestamp: datetime):
     """
     Check all active alert rules against incoming metrics.
@@ -100,10 +140,14 @@ def _evaluate_alerts(db: Session, node_id: str, metrics: dict, timestamp: dateti
                     message=f"{alert.metric} = {value} (rule: {alert.operator} {alert.threshold})",
                 )
             )
+            _send_webhook_notification(alert, node_id, value, timestamp)
         elif not breached and open_event:
             open_event.resolved = timestamp
 
-    # Update node status based on whether any open events remain after this pass
+    # Update node status based on whether any open events remain after this pass.
+    # Flush first: the session has autoflush disabled, and without this the
+    # count below can miss AlertEvents added/resolved earlier in this same call.
+    db.flush()
     has_open_events = (
         db.query(AlertEvent)
         .filter(AlertEvent.node_id == node_id, AlertEvent.resolved == None)
@@ -255,7 +299,7 @@ async def get_latest_metrics(node_id: str, db: Session = Depends(get_db)):
     # Get latest metric of each type
     latest_metrics = {}
 
-    for metric_type in ["cpu", "memory", "disk", "network", "services"]:
+    for metric_type in ["cpu", "memory", "disk", "network", "services", "containers"]:
         metric = (
             db.query(Metric)
             .filter(Metric.node_id == node_id, Metric.metric_type == metric_type)

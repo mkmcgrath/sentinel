@@ -34,6 +34,9 @@ services:
       HOST: 0.0.0.0
       PORT: 8080
       RELOAD: "false"
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+      DEMO_MODE: ${DEMO_MODE:-false}
+      DEMO_NODE_COUNT: ${DEMO_NODE_COUNT:-3}
     networks:
       - sentinel-network
     restart: unless-stopped

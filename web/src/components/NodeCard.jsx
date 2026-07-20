@@ -1,22 +1,7 @@
 import { useNavigate } from 'react-router-dom'
+import { timeAgo, metricColor } from '../utils'
+import StatusBadge from './StatusBadge'
 import styles from './NodeCard.module.css'
-
-function timeAgo(isoString) {
-  if (!isoString) return 'never'
-  const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000)
-  if (diff < 5) return 'just now'
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  return `${Math.floor(diff / 86400)}d ago`
-}
-
-function metricColor(value) {
-  if (value === null || value === undefined) return 'var(--border)'
-  if (value >= 80) return 'var(--red)'
-  if (value >= 60) return 'var(--yellow)'
-  return 'var(--green)'
-}
 
 function MetricRow({ label, value }) {
   const display = value !== null && value !== undefined ? `${Math.round(value)}%` : '--'
@@ -37,17 +22,6 @@ function MetricRow({ label, value }) {
       </span>
     </div>
   )
-}
-
-function StatusBadge({ status }) {
-  const normalized = (status || '').toLowerCase()
-  let cls = styles.badgeOffline
-  let label = status || 'unknown'
-
-  if (normalized === 'online') cls = styles.badgeOnline
-  else if (normalized === 'warning') cls = styles.badgeWarning
-
-  return <span className={[styles.badge, cls].join(' ')}>{label}</span>
 }
 
 export default function NodeCard({ node }) {

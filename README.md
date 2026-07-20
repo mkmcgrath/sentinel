@@ -140,6 +140,7 @@ The agent collects the following metrics using `/proc` filesystem (no external d
 - **Disk**: Usage per partition, I/O statistics
 - **Network**: Bytes/packets in/out per interface, gateway latency
 - **Services**: Systemd service status, listening ports
+- **Containers**: Per-container CPU % and memory usage (via `docker stats`, when Docker is installed)
 
 ## API Reference
 
@@ -209,6 +210,30 @@ curl -X POST http://localhost:8080/api/v1/alerts \
     "threshold": 80.0,
     "description": "Alert when CPU exceeds 80%"
   }'
+```
+
+## Webhook Notifications
+
+Set the `WEBHOOK_URL` environment variable on the server to receive an HTTP POST every time an alert fires:
+
+```env
+WEBHOOK_URL=https://your-webhook-endpoint.example/sentinel
+```
+
+The POST body contains `alert_name`, `node_id`, `metric`, `value`, `threshold`, `operator`, and `timestamp`. Delivery is best-effort — a failed webhook is logged and never blocks metric ingestion. Leave `WEBHOOK_URL` unset to disable.
+
+## Demo Mode
+
+No homelab? Set `DEMO_MODE=true` on the server and it will simulate `DEMO_NODE_COUNT` (default 3) synthetic nodes with plausible, drifting CPU/memory/disk/network metrics — no real agents required. One node (`demo-01`) sweeps through a CPU sine wave that periodically crosses an auto-created 80% threshold alert, so you can watch the full trigger → resolve alert lifecycle in the TUI or web dashboard.
+
+```bash
+DEMO_MODE=true docker-compose up -d
+```
+
+Or when running the server locally:
+
+```bash
+DEMO_MODE=true DEMO_NODE_COUNT=5 python app.py
 ```
 
 ## Development
@@ -306,19 +331,20 @@ Open `http://localhost:5173` in your browser.
 - Node grid home page — color-coded status cards with live CPU/MEM/DISK bars, auto-refreshes every 5 seconds
 - Active alerts banner
 - Persistent nav bar
-- Routing skeleton for Node Detail and Alert Management pages
+- Node Detail page — CPU/memory/disk history charts (recharts) with a 1h/6h/24h toggle, plus service/port and container status
+- Routing skeleton for the Alert Management page
 
 **Still to come:**
-- Node Detail page — historical line charts (recharts) with 1h/6h/24h toggle
 - Alert Management page — create/toggle/delete rules, event history table
 
 ## Roadmap
 
 - [x] Web dashboard — node grid home page
-- [ ] Web dashboard — node detail with historical charts
+- [x] Web dashboard — node detail with historical charts
 - [ ] Web dashboard — alert management page
-- [ ] Alert notifications (webhook)
-- [ ] Docker container monitoring
+- [x] Alert notifications (webhook)
+- [x] Docker container monitoring
+- [x] Demo mode with synthetic data
 - [ ] Agent auto-discovery
 - [ ] Metric aggregation and retention policies
 - [ ] SSL/TLS support

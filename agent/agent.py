@@ -24,6 +24,7 @@ from collectors.memory import MemoryCollector
 from collectors.disk import DiskCollector
 from collectors.network import NetworkCollector
 from collectors.services import ServicesCollector
+from collectors.docker import DockerCollector
 
 
 class SentinelAgent:
@@ -40,6 +41,7 @@ class SentinelAgent:
             services_to_monitor=self.config.get('services', []),
             ports_to_monitor=self.config.get('ports', [])
         )
+        self.docker_collector = DockerCollector()
 
         self.node_id = self.config.get('node_id', socket.gethostname())
         self.hostname = self.config.get('hostname') or socket.gethostname()
@@ -114,7 +116,8 @@ class SentinelAgent:
                 "memory": self.memory_collector.collect(),
                 "disk": self.disk_collector.collect(),
                 "network": self.network_collector.collect(),
-                "services": self.services_collector.collect()
+                "services": self.services_collector.collect(),
+                "containers": self.docker_collector.collect()
             }
             return metrics
         except Exception as e:

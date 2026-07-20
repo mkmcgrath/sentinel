@@ -18,11 +18,14 @@ export async function fetchHealth() {
   return request('/api/v1/health')
 }
 
-// Stubs for node detail page (second half)
+export async function fetchNode(nodeId) {
+  return request(`/api/v1/nodes/${nodeId}`)
+}
+
 export async function fetchLatestMetrics(nodeId) {
-  return request(`/api/v1/nodes/${nodeId}/metrics/latest`)
+  return request(`/api/v1/metrics/latest/${nodeId}`)
 }
 
 export async function fetchMetricHistory(nodeId, metricType, hours = 24) {
-  return request(`/api/v1/nodes/${nodeId}/metrics/${metricType}?hours=${hours}`)
+  return request(`/api/v1/metrics/history/${nodeId}?metric_type=${metricType}&hours=${hours}`)
 }
