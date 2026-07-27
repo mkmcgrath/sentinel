@@ -40,7 +40,7 @@ class Node(Base):
 
     # Relationships
     metrics = relationship("Metric", back_populates="node", cascade="all, delete-orphan")
-    alert_events = relationship("AlertEvent", back_populates="node")
+    alert_events = relationship("AlertEvent", back_populates="node", cascade="all, delete-orphan")
 
 
 class Metric(Base):
