@@ -5,6 +5,27 @@ import os
 #
 #
 
+# Filesystem types that are not real storage. squashfs and iso9660 are read-only
+# images that always report 100% used (Ubuntu mounts one squashfs per snap), which
+# would pin the node's disk figure at 100%.
+SKIP_FS_TYPES = frozenset([
+    'proc', 'sysfs', 'devpts', 'tmpfs', 'devtmpfs',
+    'cgroup', 'cgroup2', 'pstore', 'bpf', 'tracefs',
+    'debugfs', 'hugetlbfs', 'mqueue', 'configfs',
+    'fusectl', 'securityfs',
+    'squashfs', 'iso9660', 'overlay', 'nsfs', 'ramfs', 'efivarfs',
+])
+
+
+def _is_real_partition(device, fs_type):
+    """True if a /proc/mounts entry is disk-backed storage worth reporting"""
+    if fs_type in SKIP_FS_TYPES:
+        return False
+
+    # Real partitions are backed by a device path (/dev/...)
+    return device.startswith('/')
+
+
 # we start by defining a python class called DiskCollector
 #
 class DiskCollector:
@@ -37,15 +58,8 @@ class DiskCollector:
                     mount_point = parts[1]
                     fs_type = parts[2] if len(parts) > 2 else ''
 
-                    # Skip virtual filesystems
-                    if fs_type in ['proc', 'sysfs', 'devpts', 'tmpfs', 'devtmpfs',
-                                   'cgroup', 'cgroup2', 'pstore', 'bpf', 'tracefs',
-                                   'debugfs', 'hugetlbfs', 'mqueue', 'configfs',
-                                   'fusectl', 'securityfs']:
-                        continue
-
-                    # Skip if device doesn't start with /
-                    if not device.startswith('/'):
+                    # Skip virtual filesystems and read-only images
+                    if not _is_real_partition(device, fs_type):
                         continue
 
                     try:
