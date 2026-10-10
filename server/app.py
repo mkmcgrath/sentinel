@@ -79,7 +79,7 @@ async def root():
 
 
 @app.get("/api/v1/health")
-async def health_check():
+def health_check():
     """
     Health check endpoint
 

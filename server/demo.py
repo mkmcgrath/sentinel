@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from db import SessionLocal, Node, Alert, Metric
-from routes.metrics import _evaluate_alerts
+from routes.metrics import _evaluate_alerts, _send_webhook_notifications
 
 logger = logging.getLogger(__name__)
 
@@ -135,14 +135,27 @@ class DemoDataGenerator:
         db.commit()
 
     def tick(self, db: Session):
+        """
+        Generate and store one round of metrics for every demo node.
+        Returns the webhook payloads for alerts that fired, to send after this commits.
+        """
         elapsed = time.monotonic() - self.start_time
         timestamp = datetime.now(timezone.utc)
+        notifications = []
 
         for node_id in self.node_ids:
             metrics = self.states[node_id].next_metrics(elapsed)
 
             node = db.query(Node).filter(Node.node_id == node_id).first()
+            if not node:
+                # Deleted through the API while the demo was running
+                node = Node(node_id=node_id, hostname=node_id)
+                db.add(node)
+
             node.last_seen = timestamp
+            # GET /nodes marks stale nodes offline (e.g. after the server was down),
+            # and _evaluate_alerts never brings an offline node back on its own.
+            node.status = "online"
 
             for metric_type, metric_data in metrics.items():
                 db.add(Metric(
@@ -152,9 +165,25 @@ class DemoDataGenerator:
                     data=metric_data,
                 ))
 
-            _evaluate_alerts(db, node_id, metrics, timestamp)
+            notifications.extend(_evaluate_alerts(db, node_id, metrics, timestamp))
 
         db.commit()
+        return notifications
+
+
+def _run_tick(generator: DemoDataGenerator):
+    """One blocking demo tick: database writes, then any webhooks. Runs in a worker thread."""
+    db = SessionLocal()
+    try:
+        notifications = generator.tick(db)
+    except Exception as e:
+        logger.error(f"Demo mode tick failed: {e}")
+        db.rollback()
+        return
+    finally:
+        db.close()
+
+    _send_webhook_notifications(notifications)
 
 
 async def run_demo_loop():
@@ -173,13 +202,7 @@ async def run_demo_loop():
     )
 
     while True:
-        db = SessionLocal()
-        try:
-            generator.tick(db)
-        except Exception as e:
-            logger.error(f"Demo mode tick failed: {e}")
-            db.rollback()
-        finally:
-            db.close()
+        # Off the event loop: the tick does blocking database and webhook I/O
+        await asyncio.to_thread(_run_tick, generator)
 
         await asyncio.sleep(DEMO_INTERVAL_SECONDS)

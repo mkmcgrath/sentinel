@@ -6,11 +6,10 @@ import json
 import logging
 import os
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Any, Optional
-from urllib.error import URLError, HTTPError
+from typing import Dict, Any, List, Optional
 from urllib.request import Request, urlopen
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
@@ -21,6 +20,7 @@ router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
 logger = logging.getLogger(__name__)
 
 WEBHOOK_URL = os.environ.get("WEBHOOK_URL")
+WEBHOOK_TIMEOUT_SECONDS = 3
 
 
 def _get_metric_value(metrics: dict, metric_path: str) -> Optional[float]:
@@ -67,15 +67,12 @@ def _evaluate_condition(value: float, operator: str, threshold: float) -> bool:
     return fn(value, threshold) if fn else False
 
 
-def _send_webhook_notification(alert: Alert, node_id: str, value: float, timestamp: datetime):
+def _build_webhook_payload(alert: Alert, node_id: str, value: float, timestamp: datetime) -> dict:
     """
-    Notify the configured webhook URL that an alert has fired.
-    Best-effort: failures are logged, never raised, so they can't break metric ingestion.
+    Snapshot everything the webhook needs into a plain dict, so it can be sent
+    after the commit without touching ORM objects from a closed session.
     """
-    if not WEBHOOK_URL:
-        return
-
-    payload = {
+    return {
         "alert_name": alert.name,
         "node_id": node_id,
         "metric": alert.metric,
@@ -85,26 +82,44 @@ def _send_webhook_notification(alert: Alert, node_id: str, value: float, timesta
         "timestamp": timestamp.isoformat(),
     }
 
-    try:
-        data = json.dumps(payload).encode("utf-8")
-        req = Request(
-            WEBHOOK_URL,
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
-        with urlopen(req, timeout=5):
-            pass
-    except (URLError, HTTPError) as e:
-        logger.warning(f"Failed to deliver webhook notification: {e}")
+
+def _send_webhook_notifications(payloads: List[dict]):
+    """
+    Notify the configured webhook URL about alerts that have fired.
+    Best-effort: failures are logged, never raised, so they can't break metric ingestion.
+    Blocks for up to WEBHOOK_TIMEOUT_SECONDS per payload, so call it off the event
+    loop and only after the alert events have been committed.
+    """
+    if not WEBHOOK_URL:
+        return
+
+    for payload in payloads:
+        try:
+            data = json.dumps(payload).encode("utf-8")
+            req = Request(
+                WEBHOOK_URL,
+                data=data,
+                headers={"Content-Type": "application/json"},
+            )
+            with urlopen(req, timeout=WEBHOOK_TIMEOUT_SECONDS):
+                pass
+        except Exception as e:
+            logger.warning(f"Failed to deliver webhook notification: {e}")
 
 
-def _evaluate_alerts(db: Session, node_id: str, metrics: dict, timestamp: datetime):
+def _evaluate_alerts(db: Session, node_id: str, metrics: dict, timestamp: datetime) -> List[dict]:
     """
     Check all active alert rules against incoming metrics.
     - Creates an AlertEvent when a threshold is first breached.
     - Resolves the open AlertEvent when the condition clears.
     - Sets node status to 'warning' if any open events remain after evaluation.
+
+    Returns the webhook payloads for alerts that fired in this pass. Nothing is
+    sent here: the caller passes them to _send_webhook_notifications once its
+    commit has succeeded.
     """
+    notifications = []
+
     alerts = (
         db.query(Alert)
         .filter(
@@ -140,7 +155,7 @@ def _evaluate_alerts(db: Session, node_id: str, metrics: dict, timestamp: dateti
                     message=f"{alert.metric} = {value} (rule: {alert.operator} {alert.threshold})",
                 )
             )
-            _send_webhook_notification(alert, node_id, value, timestamp)
+            notifications.append(_build_webhook_payload(alert, node_id, value, timestamp))
         elif not breached and open_event:
             open_event.resolved = timestamp
 
@@ -158,6 +173,8 @@ def _evaluate_alerts(db: Session, node_id: str, metrics: dict, timestamp: dateti
     node = db.query(Node).filter(Node.node_id == node_id).first()
     if node and node.status != "offline":
         node.status = "warning" if has_open_events else "online"
+
+    return notifications
 
 
 class MetricPayload(BaseModel):
@@ -178,7 +195,11 @@ class MetricResponse(BaseModel):
 
 
 @router.post("", response_model=MetricResponse)
-async def receive_metrics(payload: MetricPayload, db: Session = Depends(get_db)):
+def receive_metrics(
+    payload: MetricPayload,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
     Receive metrics from an agent node
 
@@ -188,8 +209,15 @@ async def receive_metrics(payload: MetricPayload, db: Session = Depends(get_db))
         # Parse timestamp
         timestamp = datetime.fromisoformat(payload.timestamp.replace("Z", "+00:00"))
 
-        # Get or create node
-        node = db.query(Node).filter(Node.node_id == payload.node_id).first()
+        # Get or create node. Lock the row so overlapping posts for the same node
+        # (e.g. an agent retry) are evaluated one at a time; otherwise both could
+        # see no open event for a rule and each create one.
+        node = (
+            db.query(Node)
+            .filter(Node.node_id == payload.node_id)
+            .with_for_update()
+            .first()
+        )
 
         if not node:
             # Create new node
@@ -217,9 +245,14 @@ async def receive_metrics(payload: MetricPayload, db: Session = Depends(get_db))
             db.add(metric)
 
         # Evaluate alert rules against the incoming metrics
-        _evaluate_alerts(db, payload.node_id, payload.metrics, timestamp)
+        notifications = _evaluate_alerts(db, payload.node_id, payload.metrics, timestamp)
 
         db.commit()
+
+        # Only notify once the events are durably stored, and after the response
+        # has been sent, so a slow webhook receiver can't hold up the agent.
+        if notifications:
+            background_tasks.add_task(_send_webhook_notifications, notifications)
 
         return MetricResponse(
             success=True,
@@ -235,7 +268,7 @@ async def receive_metrics(payload: MetricPayload, db: Session = Depends(get_db))
 
 
 @router.get("/history/{node_id}")
-async def get_metric_history(
+def get_metric_history(
     node_id: str,
     metric_type: str = Query(
         ..., description="Type of metric (cpu, memory, disk, network, services)"
@@ -288,7 +321,7 @@ async def get_metric_history(
 
 
 @router.get("/latest/{node_id}")
-async def get_latest_metrics(node_id: str, db: Session = Depends(get_db)):
+def get_latest_metrics(node_id: str, db: Session = Depends(get_db)):
     """
     Get the most recent metrics for a node
     """

@@ -55,7 +55,7 @@ class AlertEventSchema(BaseModel):
 
 
 @router.post("", response_model=AlertSchema)
-async def create_alert(alert: AlertCreate, db: Session = Depends(get_db)):
+def create_alert(alert: AlertCreate, db: Session = Depends(get_db)):
     """
     Create a new alert rule
 
@@ -109,7 +109,7 @@ async def create_alert(alert: AlertCreate, db: Session = Depends(get_db)):
 
 
 @router.get("", response_model=List[AlertSchema])
-async def list_alerts(
+def list_alerts(
     active_only: bool = True,
     node_id: Optional[str] = None,
     db: Session = Depends(get_db)
@@ -149,7 +149,7 @@ async def list_alerts(
 
 
 @router.get("/{alert_id}", response_model=AlertSchema)
-async def get_alert(alert_id: int, db: Session = Depends(get_db)):
+def get_alert(alert_id: int, db: Session = Depends(get_db)):
     """Get a specific alert by ID"""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
 
@@ -171,7 +171,7 @@ async def get_alert(alert_id: int, db: Session = Depends(get_db)):
 
 
 @router.delete("/{alert_id}")
-async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
+def delete_alert(alert_id: int, db: Session = Depends(get_db)):
     """Delete an alert rule"""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
 
@@ -185,7 +185,7 @@ async def delete_alert(alert_id: int, db: Session = Depends(get_db)):
 
 
 @router.patch("/{alert_id}/toggle")
-async def toggle_alert(alert_id: int, db: Session = Depends(get_db)):
+def toggle_alert(alert_id: int, db: Session = Depends(get_db)):
     """Toggle an alert between active and inactive"""
     alert = db.query(Alert).filter(Alert.id == alert_id).first()
 
@@ -203,7 +203,7 @@ async def toggle_alert(alert_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/events/active", response_model=List[AlertEventSchema])
-async def get_active_events(db: Session = Depends(get_db)):
+def get_active_events(db: Session = Depends(get_db)):
     """
     Get all currently active (unresolved) alert events
     """
@@ -226,7 +226,7 @@ async def get_active_events(db: Session = Depends(get_db)):
 
 
 @router.get("/events/history")
-async def get_event_history(
+def get_event_history(
     node_id: Optional[str] = None,
     limit: int = 100,
     db: Session = Depends(get_db)

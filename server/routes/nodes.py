@@ -39,7 +39,7 @@ class NodeSummary(BaseModel):
 
 
 @router.get("", response_model=List[NodeSummary])
-async def list_nodes(
+def list_nodes(
     status: Optional[str] = Query(None, description="Filter by status (online, offline, warning)"),
     db: Session = Depends(get_db)
 ):
@@ -98,7 +98,7 @@ async def list_nodes(
 
 
 @router.get("/{node_id}", response_model=NodeSchema)
-async def get_node(node_id: str, db: Session = Depends(get_db)):
+def get_node(node_id: str, db: Session = Depends(get_db)):
     """
     Get detailed information for a specific node
     """
@@ -119,7 +119,7 @@ async def get_node(node_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{node_id}")
-async def delete_node(node_id: str, db: Session = Depends(get_db)):
+def delete_node(node_id: str, db: Session = Depends(get_db)):
     """
     Delete a node and all its associated metrics
 
@@ -140,7 +140,7 @@ async def delete_node(node_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/{node_id}/stats")
-async def get_node_stats(node_id: str, db: Session = Depends(get_db)):
+def get_node_stats(node_id: str, db: Session = Depends(get_db)):
     """
     Get statistical information about a node's metrics
     """
