@@ -1,5 +1,8 @@
 """CPU metric collector - reads /proc/stat and /proc/loadavg"""
+import logging
 import time
+
+logger = logging.getLogger(__name__)
 
 
 class CPUCollector:
@@ -56,7 +59,7 @@ class CPUCollector:
                 return max(0.0, min(100.0, usage))  # Clamp between 0-100
 
         except (IOError, ValueError, IndexError) as e:
-            print(f"Error reading CPU stats: {e}")
+            logger.warning(f"Error reading CPU stats: {e}")
             return 0.0
 
     def _get_load_average(self):
@@ -71,5 +74,5 @@ class CPUCollector:
                     float(fields[2])   # 15 minutes
                 )
         except (IOError, ValueError, IndexError) as e:
-            print(f"Error reading load average: {e}")
+            logger.warning(f"Error reading load average: {e}")
             return (0.0, 0.0, 0.0)

@@ -1,11 +1,20 @@
 """Network metric collector - reads /proc/net/dev and measures latency"""
-import subprocess
+import logging
 import re
+import shutil
+import subprocess
+
+logger = logging.getLogger(__name__)
 
 
 class NetworkCollector:
     def __init__(self):
         self.prev_stats = {}
+
+        # Looked up once: without ping, latency is simply not reported
+        self.ping_path = shutil.which('ping')
+        if not self.ping_path:
+            logger.warning("ping not found, gateway latency will not be measured")
 
     def collect(self):
         """Collect network metrics"""
@@ -64,12 +73,15 @@ class NetworkCollector:
                     }
 
         except (IOError, ValueError, IndexError) as e:
-            print(f"Error reading network stats: {e}")
+            logger.warning(f"Error reading network stats: {e}")
 
         return interfaces
 
     def _measure_latency(self):
         """Ping the default gateway to measure network latency"""
+        if not self.ping_path:
+            return None
+
         try:
             # Get default gateway
             with open('/proc/net/route', 'r') as f:
@@ -85,7 +97,7 @@ class NetworkCollector:
 
                         # Ping the gateway once
                         result = subprocess.run(
-                            ['ping', '-c', '1', '-W', '1', gateway_ip],
+                            [self.ping_path, '-c', '1', '-W', '1', gateway_ip],
                             capture_output=True,
                             text=True,
                             timeout=2
@@ -100,6 +112,6 @@ class NetworkCollector:
                         break
 
         except (IOError, ValueError, subprocess.TimeoutExpired) as e:
-            print(f"Error measuring latency: {e}")
+            logger.warning(f"Error measuring latency: {e}")
 
         return None

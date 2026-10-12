@@ -16,7 +16,6 @@ from urllib.error import URLError, HTTPError
 try:
     import yaml
 except ImportError:
-    print("PyYAML not found, falling back to minimal config")
     yaml = None
 
 from collectors.cpu import CPUCollector
@@ -25,6 +24,19 @@ from collectors.disk import DiskCollector
 from collectors.network import NetworkCollector
 from collectors.services import ServicesCollector
 from collectors.docker import DockerCollector
+
+# EX_CONFIG from sysexits.h. The systemd unit does not restart the agent on this
+# code, since retrying cannot fix a bad config.
+EXIT_CONFIG_ERROR = 78
+
+
+def _config_error(message):
+    """
+    Stop the agent over an unusable config file. Carrying on with defaults would
+    report under the wrong node ID to the wrong server.
+    """
+    print(f"Configuration error: {message}", file=sys.stderr)
+    sys.exit(EXIT_CONFIG_ERROR)
 
 
 class SentinelAgent:
@@ -72,33 +84,54 @@ class SentinelAgent:
             return default_config
 
         if yaml is None:
-            print("PyYAML not available, using default config")
-            return default_config
+            _config_error(
+                f"{config_path} exists but PyYAML is not installed, so it cannot be read. "
+                "Install it with your package manager (python3-yaml on Debian, Ubuntu and "
+                "Raspberry Pi OS; python3-pyyaml on Fedora; python-yaml on Arch) "
+                "or with: pip install pyyaml"
+            )
 
         try:
             with open(config_file, 'r') as f:
                 config = yaml.safe_load(f)
-                # Merge with defaults
-                for key, value in default_config.items():
-                    if key not in config:
-                        config[key] = value
-                return config
-        except Exception as e:
-            print(f"Error loading config: {e}, using defaults")
+        except (OSError, yaml.YAMLError) as e:
+            _config_error(f"cannot read {config_path}: {e}")
+
+        if config is None:
+            print(f"Config file {config_path} is empty, using defaults")
             return default_config
+
+        if not isinstance(config, dict):
+            _config_error(
+                f"{config_path} must contain 'key: value' settings, "
+                f"but its top level is a {type(config).__name__}"
+            )
+
+        # Merge with defaults
+        for key, value in default_config.items():
+            if key not in config:
+                config[key] = value
+        return config
 
     def _setup_logging(self):
         """Setup logging configuration"""
-        log_level = getattr(logging, self.config.get('log_level', 'INFO'))
+        log_level = getattr(logging, str(self.config.get('log_level', 'INFO')).upper(), None)
+        if not isinstance(log_level, int):
+            _config_error(
+                f"log_level must be one of DEBUG, INFO, WARNING, ERROR or CRITICAL, "
+                f"not {self.config.get('log_level')!r}"
+            )
+
         log_file = self.config.get('log_file')
 
         handlers = [logging.StreamHandler(sys.stdout)]
+        log_file_error = None
 
         if log_file:
             try:
                 handlers.append(logging.FileHandler(log_file))
             except (PermissionError, OSError) as e:
-                print(f"Cannot write to log file {log_file}: {e}")
+                log_file_error = e
 
         logging.basicConfig(
             level=log_level,
@@ -107,6 +140,12 @@ class SentinelAgent:
         )
 
         self.logger = logging.getLogger('SentinelAgent')
+
+        if log_file_error:
+            self.logger.warning(
+                f"Cannot write to log file {log_file}: {log_file_error}. "
+                "Logging to stdout only."
+            )
 
     def collect_metrics(self):
         """Collect all metrics from all collectors"""

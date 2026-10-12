@@ -11,6 +11,7 @@ INSTALL_DIR="/opt/sentinel-agent"
 SERVICE_NAME="sentinel-agent"
 SERVICE_FILE="sentinel-agent.service"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
+PYTHON="/usr/bin/python3"  # the interpreter the systemd service runs
 
 # Colors for output
 RED='\033[0;31m'
@@ -44,6 +45,53 @@ if ! id "$DEPLOY_USER" &>/dev/null; then
     fi
 fi
 
+# Container metrics need access to the Docker socket
+if getent group docker &>/dev/null && ! id -nG "$DEPLOY_USER" | tr ' ' '\n' | grep -qx docker; then
+    echo ""
+    echo -e "${YELLOW}Docker is installed, but '$DEPLOY_USER' is not in the docker group,${NC}"
+    echo -e "${YELLOW}so the agent cannot collect container metrics.${NC}"
+    echo "Note: membership of the docker group is effectively root access on this machine."
+    read -p "Add $DEPLOY_USER to the docker group? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        usermod -aG docker "$DEPLOY_USER"
+        echo -e "${GREEN}Added $DEPLOY_USER to the docker group${NC}"
+    else
+        echo -e "${YELLOW}Skipped: container metrics will be empty${NC}"
+    fi
+fi
+
+# The agent needs PyYAML to read config.yaml
+install_pyyaml() {
+    if command -v apt-get &>/dev/null; then
+        apt-get install -y python3-yaml || { apt-get update && apt-get install -y python3-yaml; }
+    elif command -v dnf &>/dev/null; then
+        dnf install -y python3-pyyaml
+    elif command -v pacman &>/dev/null; then
+        pacman -S --noconfirm --needed python-yaml
+    else
+        return 1
+    fi
+}
+
+if [ ! -x "$PYTHON" ]; then
+    echo -e "${RED}Error: $PYTHON not found${NC}"
+    echo "Install Python 3, then run this script again."
+    exit 1
+fi
+
+if "$PYTHON" -c "import yaml" &>/dev/null; then
+    echo "PyYAML already installed"
+else
+    echo "Installing PyYAML..."
+    if ! install_pyyaml || ! "$PYTHON" -c "import yaml" &>/dev/null; then
+        echo -e "${RED}Error: could not install PyYAML${NC}"
+        echo "Install it manually (for example: $PYTHON -m pip install pyyaml), then run this script again."
+        exit 1
+    fi
+    echo -e "${GREEN}PyYAML installed${NC}"
+fi
+
 # Create installation directory
 echo "Creating installation directory: $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR"
@@ -68,9 +116,9 @@ echo "Setting permissions..."
 chown -R "$DEPLOY_USER:$DEPLOY_USER" "$INSTALL_DIR"
 chmod +x "$INSTALL_DIR/agent.py"
 
-# Install systemd service
+# Install systemd service, running as the chosen user
 echo "Installing systemd service..."
-cp "$SERVICE_FILE" "/etc/systemd/system/$SERVICE_NAME.service"
+sed "s/^User=.*/User=$DEPLOY_USER/" "$SERVICE_FILE" > "/etc/systemd/system/$SERVICE_NAME.service"
 
 # Reload systemd
 echo "Reloading systemd..."

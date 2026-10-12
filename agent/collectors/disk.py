@@ -1,5 +1,8 @@
 """Disk metric collector - uses os.statvfs() and /proc/diskstats"""
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 # hi! if im qualified to copy this.. then what does it mean?? lets explain it:
 #
@@ -24,6 +27,23 @@ def _is_real_partition(device, fs_type):
 
     # Real partitions are backed by a device path (/dev/...)
     return device.startswith('/')
+
+
+SYS_BLOCK = '/sys/block'
+
+# Block devices that are not storage worth reporting I/O for
+SKIP_IO_DEVICE_PREFIXES = ('loop', 'ram', 'zram')
+
+
+def _is_whole_disk(device):
+    """True if a /proc/diskstats entry is a whole disk rather than a partition"""
+    if device.startswith(SKIP_IO_DEVICE_PREFIXES):
+        return False
+
+    # Whole disks (sda, nvme0n1, mmcblk0, md0, dm-0) have their own entry in
+    # /sys/block; partitions (sda1, nvme0n1p1, mmcblk0p1) only exist beneath
+    # their parent disk. Going by name instead would drop SD cards, RAID and LVM.
+    return os.path.exists(os.path.join(SYS_BLOCK, device))
 
 
 # we start by defining a python class called DiskCollector
@@ -82,7 +102,7 @@ class DiskCollector:
                         continue
 
         except IOError as e:
-            print(f"Error reading disk info: {e}")
+            logger.warning(f"Error reading disk info: {e}")
 
         return partitions
 
@@ -99,11 +119,9 @@ class DiskCollector:
 
                     device = parts[2]
 
-                    # Skip partition numbers, only look at whole disks
-                    # (sda, nvme0n1, etc., not sda1, nvme0n1p1)
-                    if any(device.endswith(str(i)) for i in range(10)):
-                        if not ('nvme' in device and 'n' in device[-3:]):
-                            continue
+                    # Only look at whole disks, not their partitions
+                    if not _is_whole_disk(device):
+                        continue
 
                     reads_completed = int(parts[3])
                     reads_merged = int(parts[4])
@@ -123,6 +141,6 @@ class DiskCollector:
                     }
 
         except (IOError, ValueError, IndexError) as e:
-            print(f"Error reading disk I/O stats: {e}")
+            logger.warning(f"Error reading disk I/O stats: {e}")
 
         return io_stats

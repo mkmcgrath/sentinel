@@ -1,6 +1,9 @@
 """Service status collector - checks systemd services and listening ports"""
-import subprocess
+import logging
 import socket
+import subprocess
+
+logger = logging.getLogger(__name__)
 
 
 class ServicesCollector:
@@ -37,7 +40,9 @@ class ServicesCollector:
                     text=True,
                     timeout=5
                 )
-                status = result.stdout.strip()
+                # is-active prints nothing when it cannot ask systemd at all
+                # (e.g. the host is not running systemd)
+                status = result.stdout.strip() or "unknown"
 
                 statuses.append({
                     "name": service,
@@ -46,7 +51,7 @@ class ServicesCollector:
                 })
 
             except (subprocess.TimeoutExpired, FileNotFoundError) as e:
-                print(f"Error checking service {service}: {e}")
+                logger.warning(f"Error checking service {service}: {e}")
                 statuses.append({
                     "name": service,
                     "status": "unknown",
@@ -77,5 +82,5 @@ class ServicesCollector:
                 result = sock.connect_ex(('127.0.0.1', port))
                 return result == 0
         except (socket.error, OSError) as e:
-            print(f"Error checking port {port}: {e}")
+            logger.warning(f"Error checking port {port}: {e}")
             return False

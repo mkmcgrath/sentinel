@@ -1,4 +1,7 @@
 """Memory metric collector - reads /proc/meminfo"""
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryCollector:
@@ -56,7 +59,7 @@ class MemoryCollector:
             }
 
         except (IOError, ValueError, KeyError) as e:
-            print(f"Error reading memory info: {e}")
+            logger.warning(f"Error reading memory info: {e}")
             return {
                 'total': 0, 'used': 0, 'available': 0,
                 'percent': 0, 'swap_total': 0, 'swap_used': 0

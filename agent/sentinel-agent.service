@@ -9,6 +9,8 @@ WorkingDirectory=/opt/sentinel-agent
 ExecStart=/usr/bin/python3 /opt/sentinel-agent/agent.py /opt/sentinel-agent/config.yaml
 Restart=always
 RestartSec=10
+# Exit code 78 = unusable config file; restarting cannot fix that
+RestartPreventExitStatus=78
 StandardOutput=journal
 StandardError=journal
 

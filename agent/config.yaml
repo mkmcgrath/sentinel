@@ -32,4 +32,8 @@ retry_delay: 5
 
 # Logging
 log_level: "INFO"
-log_file: "/var/log/sentinel-agent.log"
+
+# Optional extra log file. Leave empty when running as the systemd service:
+# output already goes to the journal (journalctl -u sentinel-agent -f).
+# If you set a path, the service user must be able to write to it.
+log_file: ""

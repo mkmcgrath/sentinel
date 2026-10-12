@@ -13,6 +13,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_
+from sqlalchemy.exc import IntegrityError
 
 from db import get_db, Node, Metric, Alert, AlertEvent
 
@@ -177,6 +178,15 @@ def _evaluate_alerts(db: Session, node_id: str, metrics: dict, timestamp: dateti
     return notifications
 
 
+def _lock_node(db: Session, node_id: str) -> Optional[Node]:
+    """
+    Fetch a node and hold its row lock until the transaction ends, so overlapping
+    posts for the same node (e.g. an agent retry) are evaluated one at a time.
+    Otherwise both could see no open event for a rule and each create one.
+    """
+    return db.query(Node).filter(Node.node_id == node_id).with_for_update().first()
+
+
 class MetricPayload(BaseModel):
     """Schema for incoming metric data from agents"""
 
@@ -209,30 +219,23 @@ def receive_metrics(
         # Parse timestamp
         timestamp = datetime.fromisoformat(payload.timestamp.replace("Z", "+00:00"))
 
-        # Get or create node. Lock the row so overlapping posts for the same node
-        # (e.g. an agent retry) are evaluated one at a time; otherwise both could
-        # see no open event for a rule and each create one.
-        node = (
-            db.query(Node)
-            .filter(Node.node_id == payload.node_id)
-            .with_for_update()
-            .first()
-        )
+        # Get or create node
+        node = _lock_node(db, payload.node_id)
 
         if not node:
-            # Create new node
-            node = Node(
-                node_id=payload.node_id,
-                hostname=payload.hostname,
-                last_seen=timestamp,
-                status="online",
-            )
-            db.add(node)
-        else:
-            # Update existing node
-            node.hostname = payload.hostname
-            node.last_seen = timestamp
-            node.status = "online"
+            # Create new node. The savepoint means that if an overlapping post
+            # registers this node first, only our insert is undone, not the batch.
+            try:
+                with db.begin_nested():
+                    db.add(Node(node_id=payload.node_id))
+                    db.flush()
+            except IntegrityError:
+                pass
+            node = _lock_node(db, payload.node_id)
+
+        node.hostname = payload.hostname
+        node.last_seen = timestamp
+        node.status = "online"
 
         # Store each metric type separately
         for metric_type, metric_data in payload.metrics.items():

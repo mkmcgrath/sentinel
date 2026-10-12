@@ -12,7 +12,7 @@
 
 ## Features
 
-- **Lightweight Agent**: Python agent with zero external dependencies (uses only stdlib)
+- **Lightweight Agent**: Python agent built on the standard library; its only external dependency is PyYAML, which `install.sh` installs
 - **Central Server**: FastAPI-based server with PostgreSQL storage
 - **TUI Dashboard**: Beautiful terminal dashboard using Textual
 - **Web Dashboard**: React-based browser UI with live node grid and alert status
@@ -133,7 +133,7 @@ sentinel/
 
 ## Agent Metrics Collected
 
-The agent collects the following metrics using `/proc` filesystem (no external dependencies):
+The agent collects the following metrics using `/proc` filesystem and standard system tools (PyYAML is needed only to read `config.yaml`):
 
 - **CPU**: Usage percentage, load averages (1m, 5m, 15m)
 - **Memory**: Total, used, available, swap
@@ -141,6 +141,8 @@ The agent collects the following metrics using `/proc` filesystem (no external d
 - **Network**: Bytes/packets in/out per interface, gateway latency
 - **Services**: Systemd service status, listening ports
 - **Containers**: Per-container CPU % and memory usage (via `docker stats`, when Docker is installed)
+
+Container metrics need the agent's service user to be in the `docker` group, which `install.sh` offers to set up. Membership of that group is effectively root access on the node, so decline it if you would rather run without container metrics.
 
 ## API Reference
 
@@ -261,6 +263,7 @@ python app.py
 
 ```bash
 cd agent
+# Needs PyYAML: install python3-yaml (Debian/Ubuntu), python-yaml (Arch) or `pip install pyyaml`
 python3 agent.py config.yaml
 ```
 
